@@ -62,15 +62,15 @@ cmd() { local c="bash $HOOK $1"; [ "$CANNY_DIR" = /home/workspace/Integrations/c
 merge_json() {
   local file="$1" spec="$2" tmp
   run mkdir -p "$(dirname "$file")"
-  [ -f "$file" ] || { [ "$DRY" = 1 ] || echo '{}' > "$file"; }
-  backup "$file"
-  if [ "$DRY" = 1 ]; then echo "[dry-run] merge into $file: $spec"; return; fi
   tmp="$(mktemp)"
   jq --argjson spec "$spec" '
     .hooks //= {} |
     reduce ($spec | to_entries[]) as $e (.;
       if ((.hooks[$e.key] // []) | tostring | test("verity-hook")) then .
-      else .hooks[$e.key] = ((.hooks[$e.key] // []) + [$e.value]) end)' "$file" > "$tmp"
+      else .hooks[$e.key] = ((.hooks[$e.key] // []) + [$e.value]) end)' <(if [ -f "$file" ]; then cat "$file"; else echo '{}'; fi) > "$tmp"
+  if [ -f "$file" ] && [ "$(jq -S . "$file")" = "$(jq -S . "$tmp")" ]; then rm -f "$tmp"; echo "already wired $file"; return; fi
+  if [ "$DRY" = 1 ]; then rm -f "$tmp"; echo "[dry-run] merge into $file: $spec"; return; fi
+  backup "$file"
   mv "$tmp" "$file"
   echo "wired $file"
 }

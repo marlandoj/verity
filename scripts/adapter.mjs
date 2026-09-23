@@ -1,9 +1,14 @@
 #!/usr/bin/env node
-// Translates a Kimi Code or Gemini CLI hook event into the Claude Code event shape Canny reads.
-// Shapes were captured from live sessions (kimi 0.41.0, gemini 0.58.0) on 2026-09-23.
+// Translates Kimi Code and Gemini CLI hook events into the Claude Code shape Canny reads, and
+// (with --out) Canny's verdicts back into each harness's decision format for live mode.
+// Input shapes were captured from live sessions (kimi 0.41.0, gemini 0.58.0) on 2026-09-23;
+// output formats were read from the same installed versions.
+//   adapter.mjs <kimi|gemini>          event in, Claude-shaped event out
+//   adapter.mjs --out <kimi|gemini>    {event, verdict} in, harness decision out
 import { readFileSync } from "node:fs";
 
-const harness = process.argv[2];
+const outMode = process.argv[2] === "--out";
+const harness = process.argv[outMode ? 3 : 2];
 const raw = JSON.parse(readFileSync(0, "utf8") || "{}");
 const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 const str = (v) => (typeof v === "string" ? v : "");
@@ -78,5 +83,41 @@ function gemini(e) {
   return out;
 }
 
-const convert = { kimi, gemini }[harness];
-process.stdout.write(JSON.stringify(convert ? convert(raw) : raw));
+// Kimi blocks only on exit 2 or hookSpecificOutput.permissionDecision "deny"; a Stop block is fed
+// back to the model as a user message once. It has no ask, input rewrite, or context injection.
+function kimiOut(v) {
+  const h = obj(v.hookSpecificOutput);
+  const deny = (reason) => ({
+    hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: reason },
+  });
+  if (v.decision === "block") return deny(str(v.reason) || str(v.systemMessage));
+  if (h.permissionDecision === "deny" || h.permissionDecision === "ask")
+    return deny(str(h.permissionDecisionReason) || str(v.systemMessage));
+  const msg = str(h.additionalContext) || str(v.systemMessage);
+  return msg ? { message: msg } : {};
+}
+
+// Gemini reads a top-level decision (block/deny/ask) and reason; AfterAgent "block" makes the
+// agent continue with the reason as its next prompt. BeforeTool rewrites via hookSpecificOutput.tool_input.
+function geminiOut(v, e) {
+  const h = obj(v.hookSpecificOutput);
+  const base = v.systemMessage ? { systemMessage: str(v.systemMessage) } : {};
+  if (v.decision === "block") return { ...base, decision: "block", reason: str(v.reason) };
+  if (h.permissionDecision === "deny" || h.permissionDecision === "ask")
+    return { ...base, decision: h.permissionDecision, reason: str(h.permissionDecisionReason) };
+  if (h.updatedInput) {
+    const ti = { ...obj(e.tool_input), command: str(obj(h.updatedInput).command) };
+    return { ...base, hookSpecificOutput: { tool_input: ti, additionalContext: str(h.additionalContext) } };
+  }
+  if (h.additionalContext) return { ...base, hookSpecificOutput: { additionalContext: str(h.additionalContext) } };
+  return base;
+}
+
+if (outMode) {
+  const translate = { kimi: kimiOut, gemini: geminiOut }[harness];
+  const v = obj(raw.verdict);
+  process.stdout.write(JSON.stringify(translate ? translate(v, obj(raw.event)) : v));
+} else {
+  const convert = { kimi, gemini }[harness];
+  process.stdout.write(JSON.stringify(convert ? convert(raw) : raw));
+}

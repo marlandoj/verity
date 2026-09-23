@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Installs Canny (pinned) and wires the shadow wrapper into the chosen harnesses.
-# Every config file is backed up before it is touched. Re-running is idempotent.
+# Installs Canny (pinned) and wires the Verity hook into the chosen harnesses, in shadow mode.
+# Every config file is backed up before it is touched. Re-running is idempotent, and any
+# pre-rename canny-shadow hook entries are repointed at verity-hook.sh.
 #
 # Usage: install.sh [--harness claude,codex,kimi,gemini] [--project DIR] [--canny-dir DIR]
 #                   [--backup-dir DIR] [--dry-run]
@@ -11,12 +12,12 @@ set -euo pipefail
 CANNY_REPO="https://github.com/qkal/Canny"
 CANNY_PIN="f2c5e53779445d60dc4a09d2dbced2308fccb820"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOOK="$DIR/canny-shadow-hook.sh"
+HOOK="$DIR/verity-hook.sh"
 
 HARNESSES="claude,codex,kimi,gemini"
 PROJECT="$PWD"
 CANNY_DIR="${CANNY_DIR:-/home/workspace/Integrations/canny}"
-BACKUP_DIR="${BACKUP_DIR:-$HOME/.canny/backups}"
+BACKUP_DIR="${BACKUP_DIR:-${VERITY_HOME:-$HOME/.verity}/backups}"
 DRY=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -40,7 +41,7 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 run() { if [ "$DRY" = 1 ]; then echo "[dry-run] $*"; else "$@"; fi; }
 backup() {
   [ -f "$1" ] || return 0
-  local dest="$BACKUP_DIR/$(echo "$1" | tr / _).pre-canny-$STAMP"
+  local dest="$BACKUP_DIR/$(echo "$1" | tr / _).pre-verity-$STAMP"
   run mkdir -p -m 700 "$BACKUP_DIR"
   run cp -p "$1" "$dest"
   echo "backed up $1 -> $dest"
@@ -68,7 +69,7 @@ merge_json() {
   jq --argjson spec "$spec" '
     .hooks //= {} |
     reduce ($spec | to_entries[]) as $e (.;
-      if ((.hooks[$e.key] // []) | tostring | test("canny-shadow-hook")) then .
+      if ((.hooks[$e.key] // []) | tostring | test("verity-hook")) then .
       else .hooks[$e.key] = ((.hooks[$e.key] // []) + [$e.value]) end)' "$file" > "$tmp"
   mv "$tmp" "$file"
   echo "wired $file"
@@ -92,7 +93,7 @@ install_claude() {
 install_codex() {
   local c; c="$(cmd codex)"
   local g; g() { jq -nc --arg c "$c" --argjson t "$1" --arg m "${2:-}" \
-    '{hooks: [{type: "command", command: $c, timeout: $t, statusMessage: "Canny shadow"}]} + (if $m == "" then {} else {matcher: $m} end)'; }
+    '{hooks: [{type: "command", command: $c, timeout: $t, statusMessage: "Verity"}]} + (if $m == "" then {} else {matcher: $m} end)'; }
   merge_json "$PROJECT/.codex/hooks.json" "$(jq -nc \
     --argjson s "$(g 10)" --argjson pre "$(g 10 'Bash|apply_patch')" \
     --argjson post "$(g 15 'Bash|apply_patch')" --argjson stop "$(g 15)" \
@@ -111,7 +112,7 @@ install_gemini() {
 
 install_kimi() {
   local file="$HOME/.kimi-code/config.toml" c; c="$(cmd kimi)"
-  if [ -f "$file" ] && grep -q canny-shadow-hook "$file"; then echo "already wired $file"; return; fi
+  if [ -f "$file" ] && grep -q verity-hook "$file"; then echo "already wired $file"; return; fi
   backup "$file"
   local block
   block="$(printf '\n[[hooks]]\nevent = "%s"\n%scommand = "%s"\ntimeout = %s\n' \
@@ -126,12 +127,23 @@ install_kimi() {
   echo "wired $file"
 }
 
+# Repoint entries written before the rename (Skills/canny-shadow/scripts/canny-shadow-hook.sh).
+migrate() {
+  [ -f "$1" ] && grep -q 'canny-shadow/scripts/canny-shadow-hook\.sh' "$1" || return 0
+  backup "$1"
+  run sed -i "s#[^\" ]*canny-shadow/scripts/canny-shadow-hook\.sh#$HOOK#g" "$1"
+  echo "migrated $1"
+}
+
 IFS=, read -ra list <<< "$HARNESSES"
+for f in "$PROJECT/.claude/settings.json" "$PROJECT/.codex/hooks.json" "$HOME/.kimi-code/config.toml" "$HOME/.gemini/settings.json"; do
+  migrate "$f"
+done
 for h in "${list[@]}"; do
   case "$h" in
     claude|codex|kimi|gemini) "install_$h" ;;
     *) echo "unsupported harness: $h (supported: claude, codex, kimi, gemini)" >&2; exit 2 ;;
   esac
 done
-run mkdir -p -m 700 "${CANNY_HOME:-$HOME/.canny}"
-echo "done. verdicts: bash $DIR/report.sh"
+run mkdir -p -m 700 "${CANNY_HOME:-$HOME/.canny}" "${VERITY_HOME:-$HOME/.verity}"
+echo "done, in shadow mode. status: bash $DIR/verity.sh status   go live: bash $DIR/verity.sh mode live"

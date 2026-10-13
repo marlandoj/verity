@@ -46,9 +46,9 @@ run_fixture() {
     cd /
     local sess; sess="$(ls "$home"/sessions/*.jsonl 2>/dev/null | head -n 1)"
     env -u TYPESAFE_API_KEY "$HOME_VAR"="$home" timeout 10 node "$ENGINE_CLI" status 2>&1 \
-      | norm | sed -E -e "s#$home#HOME#g" -e "s#$T#TDIR#g" -e 's#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z#TS#g' > "$got_s"
+      | norm | sed -E -e "s#$home#HOME#g" -e "s#$T#TDIR#g" -e 's#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z#TS#g' -e 's#node "[^"]*cli\.js"#node "CLI"#g' > "$got_s"
     env -u TYPESAFE_API_KEY "$HOME_VAR"="$home" timeout 10 node "$ENGINE_CLI" sessions 2>&1 \
-      | norm | sed -E -e "s#$home#HOME#g" -e "s#$T#TDIR#g" -e 's#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z#TS#g' > "$got_ss"
+      | norm | sed -E -e "s#$home#HOME#g" -e "s#$T#TDIR#g" -e 's#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z#TS#g' -e 's#node "[^"]*cli\.js"#node "CLI"#g' > "$got_ss"
     if [ -f "$home/errors.log" ]; then
       sed -E -e 's#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z#TS#g' "$home/errors.log" > "$got_e"
     else

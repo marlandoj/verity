@@ -1,1 +1,1 @@
-no sessions recorded for / under HOME; `node "/home/hatch/workspace/Integrations/canny/dist/cli.js" sessions` lists every project's
+no sessions recorded for / under HOME; `node "CLI" sessions` lists every project's

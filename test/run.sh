@@ -64,7 +64,8 @@ check "check filter shadows other kinds" "$(hook claude "$STOP")" "{}"
 check "check filter applies listed kind" "$(FAKE_VERDICT=$DENY hook claude '{"hook_event_name":"PreToolUse"}' | jq -r .hookSpecificOutput.permissionDecision)" "deny"
 check "env overrides config" "$(VERITY_MODE=shadow FAKE_VERDICT=$DENY hook claude '{"hook_event_name":"PreToolUse"}')" "{}"
 check "live applied logged" "$(jq -s 'map(select(.applied)) | length > 0' "$T/v/verdicts.jsonl")" "true"
-check "bad verdict fails open" "$(FAKE_VERDICT='not json' hook claude "$STOP")" "{}"
+check "bad verdict fails closed" "$(FAKE_VERDICT='not json' hook claude "$STOP" | jq -r .decision)" "block"
+check "kimi bad verdict fails closed" "$(FAKE_VERDICT='not json' hook kimi "$STOP" | jq -r .hookSpecificOutput.permissionDecision)" "deny"
 $V reset >/dev/null
 check "reset to shadow" "$(hook claude "$STOP")" "{}"
 unset CANNY_CLI TYPESAFE_API_KEY VERITY_HOME

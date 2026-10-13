@@ -51,7 +51,7 @@ fail_closed() {
   esac
   case "$HARNESS" in
     kimi|gemini)
-      printf '%s' "$synthetic" | jq -nc --argjson e "${input:-{\}}" '{event:$e, verdict:.}' 2>/dev/null \
+      printf '%s' "$synthetic" | jq -c --argjson e "${input:-{\}}" '{event:$e, verdict:.}' 2>/dev/null \
         | timeout 5 node "$DIR/adapter.mjs" --out "$HARNESS" 2>/dev/null ;;
     *) printf '%s' "$synthetic" ;;
   esac
@@ -68,7 +68,7 @@ alarm() {
 }
 
 refuse() {
-  candidate=$(fail_closed "$1: the Verity gate cannot vouch for this session. Restore the analyzer, or run scripts/verity.sh mode off to stand the gate down.")
+  candidate=$(fail_closed "$1: the Verity gate cannot vouch for this session. Restore the analyzer, or run scripts/verity.sh mode shadow to stand the gate down.")
   if printf '%s' "$candidate" | jq -e . >/dev/null 2>&1; then
     answer="$candidate"
   fi

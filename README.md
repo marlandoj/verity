@@ -21,9 +21,10 @@ Verity adds what Canny doesn't ship: adapters for Kimi Code and Gemini CLI, a sh
 3. **Canny** updates its ledger and returns a verdict: allow, refuse the finish, deny or ask about a tool call, rewrite a command, or add a note.
 4. **Verity** logs the verdict, then:
    - in **shadow**, answers `{}` so the agent is unaffected;
-   - in **live**, returns the verdict in the harness's own format (translated back for Kimi and Gemini).
+   - in **live**, returns the verdict in the harness's own format (translated back for Kimi and Gemini);
+   - in **live**, if the analyzer can't answer (missing, crashed, timed out, malformed output), refuses the finish or the tool call instead of silently passing — a dead gate fails closed, and the outage is logged.
 
-Canny's optional Jev model is disabled in both modes: the API key is stripped and the endpoint points at a dead port, so no text leaves the host. If anything fails (Canny missing, a timeout, malformed output), Verity answers `{}` and the agent carries on.
+Canny's optional Jev model is disabled in both modes: the API key is stripped and the endpoint points at a dead port, so no text leaves the host. If anything fails (analyzer missing, a timeout, malformed output), Verity fails closed in live mode — it refuses the finish or the tool call rather than silently passing — and answers `{}` in shadow mode, where the gate only observes.
 
 | Harness | Config written | Scope | Translation |
 |---|---|---|---|
@@ -109,4 +110,4 @@ Kimi and Gemini ledgers are named `claude-kimi-<id>` / `claude-gemini-<id>` beca
 bash test/run.sh
 ```
 
-Hermetic: a fake Canny CLI and a temporary `HOME`, project and Verity home. Covers translation in both directions, shadow mode for every harness, the Jev key never reaching Canny, the kill switch, the mode CLI, live mode per harness and per check, environment precedence, failing open on bad output, and the installer's merge, preservation, migration and idempotency.
+Hermetic: a fake Canny CLI and a temporary `HOME`, project and Verity home. Covers translation in both directions, shadow mode for every harness, the Jev key never reaching Canny, the kill switch, the mode CLI, live mode per harness and per check, environment precedence, failing closed on bad output in live mode (including the Kimi/Gemini translated refusal), and the installer's merge, preservation, migration and idempotency.

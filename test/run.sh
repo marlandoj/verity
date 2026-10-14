@@ -71,20 +71,17 @@ check "reset to shadow" "$(hook claude "$STOP")" "{}"
 unset CANNY_CLI TYPESAFE_API_KEY VERITY_HOME
 
 # Installer: wires all four harnesses, keeps existing hooks, and is idempotent.
-mkdir -p "$T/home/.gemini" "$T/proj/.claude" "$T/canny/.git" "$T/canny/dist"
+mkdir -p "$T/home/.gemini" "$T/proj/.claude"
 echo '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"keep-me"}]}]}}' > "$T/proj/.claude/settings.json"
-touch "$T/canny/dist/cli.js"
-git -C "$T/canny" init -q 2>/dev/null
-inst() { HOME="$T/home" bash "$ROOT/scripts/install.sh" --project "$T/proj" --canny-dir "$T/canny" --backup-dir "$T/bk" >/dev/null 2>&1; }
+inst() { HOME="$T/home" bash "$ROOT/scripts/install.sh" --project "$T/proj" --backup-dir "$T/bk" >/dev/null 2>&1; }
 inst; check "installer exit" "$?" "0"; inst
 check "claude keeps existing hook" "$(jq -r '.hooks.Stop[0].hooks[0].command' "$T/proj/.claude/settings.json")" "keep-me"
 check "claude wired once" "$(jq '[.hooks[][] | tostring | select(test("verity-hook"))] | length' "$T/proj/.claude/settings.json")" "5"
 check "codex wired once" "$(jq '[.hooks[][] | tostring | select(test("verity-hook"))] | length' "$T/proj/.codex/hooks.json")" "4"
 check "gemini wired once" "$(jq '[.hooks[][] | tostring | select(test("verity-hook"))] | length' "$T/home/.gemini/settings.json")" "4"
 check "kimi wired once" "$(grep -c verity-hook "$T/home/.kimi-code/config.toml")" "5"
-check "custom canny dir passed" "$(grep -c "CANNY_DIR=$T/canny" "$T/home/.kimi-code/config.toml")" "5"
 mkdir -p "$T/old/.claude"; echo '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash /x/Skills/canny-shadow/scripts/canny-shadow-hook.sh claude"}]}]}}' > "$T/old/.claude/settings.json"
-HOME="$T/home" bash "$ROOT/scripts/install.sh" --harness claude --project "$T/old" --canny-dir "$T/canny" --backup-dir "$T/bk" >/dev/null 2>&1
+HOME="$T/home" bash "$ROOT/scripts/install.sh" --harness claude --project "$T/old" --backup-dir "$T/bk" >/dev/null 2>&1
 check "legacy entry migrated" "$(jq '[.hooks[][] | tostring | select(test("verity-hook"))] | length' "$T/old/.claude/settings.json")" "5"
 check "no legacy left" "$(grep -c canny-shadow "$T/old/.claude/settings.json")" "0"
 check "backup written" "$(ls "$T/bk" | grep -c proj_.claude_settings)" "1"

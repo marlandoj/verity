@@ -1,44 +1,31 @@
 #!/usr/bin/env bash
-# Installs Canny (pinned) and wires the Verity hook into the chosen harnesses, in shadow mode.
+# Installs the Verity hook into the chosen harnesses, in shadow mode.
 # Every config file is backed up before it is touched. Re-running is idempotent, and any
 # pre-rename canny-shadow hook entries are repointed at verity-hook.sh.
 #
-# Usage: install.sh [--harness claude,codex,kimi,gemini] [--project DIR] [--canny-dir DIR]
-#                   [--engine verity|Canny] [--backup-dir DIR] [--dry-run]
+# Usage: install.sh [--harness claude,codex,kimi,gemini] [--project DIR]
+#                   [--backup-dir DIR] [--dry-run]
 #   --project     directory whose .claude/settings.json and .codex/hooks.json get the hooks
 #                 (default: current directory). Kimi and Gemini configs are user-global.
-#   --engine      which done-gate engine the hook shells out to: the clean-room Verity
-#                 engine in engine/ ("verity", the default since cutover) or the pinned
-#                 Canny checkout ("Canny"). Stored in the Verity config's .engine key.
 set -euo pipefail
 
-CANNY_REPO="https://github.com/qkal/Canny"
-CANNY_PIN="f2c5e53779445d60dc4a09d2dbced2308fccb820"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$DIR/verity-hook.sh"
 
 HARNESSES="claude,codex,kimi,gemini"
 PROJECT="$PWD"
-CANNY_DIR="${CANNY_DIR:-/home/workspace/Integrations/canny}"
-ENGINE="verity"
 BACKUP_DIR="${BACKUP_DIR:-${VERITY_HOME:-$HOME/.verity}/backups}"
 DRY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --harness) HARNESSES="$2"; shift 2 ;;
     --project) PROJECT="$(cd "$2" && pwd)"; shift 2 ;;
-    --canny-dir) CANNY_DIR="$2"; shift 2 ;;
-    --engine) ENGINE="$2"; shift 2 ;;
     --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n 2,12p "$0"; exit 0 ;;
+    -h|--help) sed -n 2,10p "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-case "$ENGINE" in
-  verity|Canny) ;;
-  *) echo "unknown engine: $ENGINE (supported: verity, Canny)" >&2; exit 2 ;;
-esac
 
 for bin in node jq git; do
   command -v "$bin" >/dev/null || { echo "missing dependency: $bin" >&2; exit 1; }
@@ -56,21 +43,10 @@ backup() {
   echo "backed up $1 -> $dest"
 }
 
-if [ "$ENGINE" = verity ]; then
-  # The clean-room engine ships in this repo; no checkout needed.
-  [ -f "$DIR/../engine/cli.js" ] || { echo "no engine/cli.js in $DIR/../engine" >&2; exit 1; }
-else
-  if [ -d "$CANNY_DIR/.git" ]; then
-    have="$(git -C "$CANNY_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
-    [ "$have" = "$CANNY_PIN" ] || echo "warning: $CANNY_DIR is at $have, pin is $CANNY_PIN" >&2
-  else
-    run git clone --quiet "$CANNY_REPO" "$CANNY_DIR"
-    run git -C "$CANNY_DIR" checkout --quiet "$CANNY_PIN"
-  fi
-  [ "$DRY" = 1 ] || [ -f "$CANNY_DIR/dist/cli.js" ] || { echo "no dist/cli.js in $CANNY_DIR" >&2; exit 1; }
-fi
+# The clean-room engine ships in this repo; no checkout needed.
+[ -f "$DIR/../engine/cli.js" ] || { echo "no engine/cli.js in $DIR/../engine" >&2; exit 1; }
 
-cmd() { local c="bash $HOOK $1"; [ "$CANNY_DIR" = /home/workspace/Integrations/canny ] || c="CANNY_DIR=$CANNY_DIR $c"; echo "$c"; }
+cmd() { local c="bash $HOOK $1"; echo "$c"; }
 
 # Adds one hook group per event unless a group already calls this wrapper.
 merge_json() {
@@ -159,14 +135,14 @@ for h in "${list[@]}"; do
     *) echo "unsupported harness: $h (supported: claude, codex, kimi, gemini)" >&2; exit 2 ;;
   esac
 done
-run mkdir -p -m 700 "${VERITY_ENGINE_HOME:-${CANNY_HOME:-$HOME/.canny}}" "${VERITY_HOME:-$HOME/.verity}"
-# Record the engine choice where the hook reads it (default stays Canny until cutover).
+run mkdir -p -m 700 "${VERITY_ENGINE_HOME:-$HOME/.verity/engine}" "${VERITY_HOME:-$HOME/.verity}"
+# Record the engine choice where the hook reads it.
 if [ "$DRY" = 0 ]; then
   cfg="${VERITY_HOME:-$HOME/.verity}/config.json"
   if [ -f "$cfg" ]; then
-    tmp="$(mktemp)"; jq --arg e "$ENGINE" '.engine = $e' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+    tmp="$(mktemp)"; jq '.engine = "verity"' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
   else
-    jq -n --arg e "$ENGINE" '{engine: $e}' > "$cfg"
+    jq -n '{engine: "verity"}' > "$cfg"
   fi
 fi
-echo "done, in shadow mode on the $ENGINE engine. status: bash $DIR/verity.sh status   go live: bash $DIR/verity.sh mode live"
+echo "done, in shadow mode on the verity engine. status: bash $DIR/verity.sh status   go live: bash $DIR/verity.sh mode live"

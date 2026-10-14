@@ -30,20 +30,10 @@ checks=$(jq -r --arg h "$HARNESS" '(.harness[$h].checks // .checks // ["all"]) |
 mode="${VERITY_MODE:-${mode:-shadow}}"
 checks="${VERITY_CHECKS:-${checks:-all}}"
 
-# Engine selection. VERITY_ENGINE_CLI wins outright; CANNY_CLI is a deprecated
-# alias for it. Otherwise the engine named by $VERITY_ENGINE or the config's
-# .engine key (default "verity" since cutover): "verity" uses this repo's
-# clean-room engine, "Canny" the pinned checkout (VERITY_ENGINE_DIR, with
-# CANNY_DIR as a deprecated alias).
-ENGINE_CLI="${VERITY_ENGINE_CLI:-${CANNY_CLI:-}}"
-if [ -z "$ENGINE_CLI" ]; then
-  engine="${VERITY_ENGINE:-$(jq -r '.engine // "verity"' "$cfg" 2>/dev/null)}"
-  case "$engine" in
-    verity) ENGINE_CLI="$DIR/../engine/cli.js" ;;
-    *) ENGINE_DIR="${VERITY_ENGINE_DIR:-${CANNY_DIR:-/home/workspace/Integrations/canny}}"
-       ENGINE_CLI="$ENGINE_DIR/dist/cli.js" ;;
-  esac
-fi
+# Engine selection. VERITY_ENGINE_CLI wins outright; CANNY_CLI is honored as
+# a deprecated alias (used by the test suite to inject a fake engine);
+# otherwise this repo's clean-room engine in engine/ is used.
+ENGINE_CLI="${VERITY_ENGINE_CLI:-${CANNY_CLI:-$DIR/../engine/cli.js}}"
 
 event_name() { printf '%s' "$1" | jq -r '.hook_event_name // ""' 2>/dev/null; }
 

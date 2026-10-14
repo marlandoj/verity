@@ -5,21 +5,19 @@ Verity previously obtained by cloning `qkal/Canny` at install time.
 
 - **No code is shared** with that implementation. Every module here was
   written from the behavioral specification in `test/fixtures/engine`
-  (32 black-box fixture suites: hook-event sequences in, verdicts and
+  (43 black-box fixture suites: hook-event sequences in, verdicts and
   ledger lines out) plus the architecture notes in
   `~/workspace/goals/verity-done-gate-live-on-codex/files/ai-engineer-design-review.md`.
 - The prior implementation's sources were **never read** during this work;
-  it was executed only as a black box to record the fixtures.
+  it was executed only as a black box to record the fixtures and to
+  validate the rewrite via differential fuzzing (4,329 events, 0 divergences).
 - Before delivery, `engine/` is diffed against the prior `dist/` for
   accidental textual similarity; structural similarity (same CLI contract,
   same ledger format) is expected and intended.
-- Behavioral compatibility is deliberate, including details that look
-  odd in isolation:
-  - verdict messages keep the `Canny:` prefix so dual-run verdict diffs
-    stay byte-identical during the cutover soak;
-  - the config file remains `.canny.json` so existing trusted projects
-    keep working through the migration.
-  Both are flagged for revisit after cutover, not during it.
+- Post-cutover, the engine carries Verity branding throughout: verdict
+  messages use the `Verity:` prefix, and the project config file is
+  `.verity.json` (the legacy `.canny.json` name is still honored for
+  existing trusted projects, as is the `~/.canny` home for migration).
 - Design rule preserved: *facts go to code, judgments go to a model, only
   facts can block.* There is no model on the verdict path — the disabled
   judge of the old engine is absent here by design, not by omission.

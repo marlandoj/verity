@@ -230,12 +230,12 @@ export function detectSecret(filePath, content, cwd, allowSecrets = false) {
   const label = labels.join(" and ");
   if (base.startsWith(".env")) {
     return (
-      `Canny: ${disp} would contain what looks like ${label}. ` +
+      `Verity: ${disp} would contain what looks like ${label}. ` +
       `An env file is only the place for it once git ignores the file, and a committed template never is.`
     );
   }
   return (
-    `Canny: ${disp} would contain what looks like ${label}. ` +
+    `Verity: ${disp} would contain what looks like ${label}. ` +
     `Read the value from the environment or a git-ignored env file instead of writing it into the file.`
   );
 }
@@ -301,7 +301,7 @@ export function detectTestDeletion(command, cwd) {
   const found = hit || mvHit;
   if (!found) return null;
   return (
-    `Canny: this command removes ${relPath(cwd, found)} from the tests. ` +
+    `Verity: this command removes ${relPath(cwd, found)} from the tests. ` +
     `Tests are only removed or skipped when the user asked for it. ` +
     `Fix the code the test covers instead.`
   );

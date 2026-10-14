@@ -1,7 +1,7 @@
 // Home directory resolution for the Verity engine.
-// VERITY_ENGINE_HOME wins; CANNY_HOME is honored as a deprecated alias;
-// otherwise ~/.verity/engine. When settling on the default home for the
-// first time, existing sessions are migrated from ~/.canny automatically.
+// VERITY_ENGINE_HOME wins; otherwise ~/.verity/engine. When settling on the
+// default home for the first time, existing sessions are migrated from
+// ~/.canny automatically.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +11,6 @@ export const LEGACY_HOME = path.join(os.homedir(), ".canny");
 
 export function resolveHome() {
   if (process.env.VERITY_ENGINE_HOME) return process.env.VERITY_ENGINE_HOME;
-  if (process.env.CANNY_HOME) return process.env.CANNY_HOME; // deprecated alias
   return DEFAULT_HOME;
 }
 

@@ -74,7 +74,7 @@ export function decideStop(priorLines, stopHookActive) {
       return {
         decision: "warn",
         message:
-          `Canny: the agent finished without a passing check after editing ` +
+          `Verity: the agent finished without a passing check after editing ` +
           `${s.edited.join(", ")}. Verify by hand.`,
       };
     }
@@ -90,7 +90,7 @@ export function decideStop(priorLines, stopHookActive) {
   return {
     decision: "block",
     message:
-      `Canny: ${files} changed, but no check has passed since the last edit.` +
+      `Verity: ${files} changed, but no check has passed since the last edit.` +
       tail +
       ` ${DONE_GUIDANCE}`,
   };

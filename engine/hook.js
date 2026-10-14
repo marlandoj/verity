@@ -15,7 +15,7 @@ import {
 import { globMatch } from "./util.js";
 
 const SESSION_NOTE =
-  "Canny guards this session. Before you finish, a check has to pass " +
+  "Verity guards this session. Before you finish, a check has to pass " +
   "after your last code edit. A test, build, lint, or type-check command " +
   "counts, run so its own exit status is the result: a pipe into `tail`, " +
   "`|| true`, or a trailing `; echo` hides it. " +
@@ -23,7 +23,7 @@ const SESSION_NOTE =
   "only when the user asks.";
 
 const REWRITE_NOTE =
-  "Canny ran this with `set -o pipefail`, so the check's own exit status " +
+  "Verity ran this with `set -o pipefail`, so the check's own exit status " +
   "is the result and it counts as a check.";
 
 function logCrash(home, err) {

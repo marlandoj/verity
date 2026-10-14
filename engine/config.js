@@ -1,4 +1,4 @@
-// Project config: <cwd>/.canny.json, gated by `trust`.
+// Project config: <cwd>/.verity.json, gated by `trust`.
 // trust records sha256(<abspath>) in $HOME/trusted.json; a config only
 // takes effect when its content hash still matches. The agent runs as the
 // user and can weaken its own config — documented limitation, not a bug:
@@ -12,7 +12,8 @@ import path from "node:path";
 import { fileHash } from "./util.js";
 import { ensureDir } from "./home.js";
 
-const CONFIG_NAME = ".canny.json";
+const CONFIG_NAME = ".verity.json";
+const LEGACY_CONFIG_NAME = ".canny.json";
 
 function trustedFile(home) {
   return path.join(home, "trusted.json");
@@ -42,12 +43,14 @@ function loadIfTrusted(trusted, file) {
   }
 }
 
-/** Walk up from cwd looking for .canny.json. Returns abspath or null. */
+/** Walk up from cwd looking for .verity.json (or legacy .verity.json). Returns abspath or null. */
 export function findConfigFile(cwd) {
   let dir = path.resolve(cwd);
   for (;;) {
     const cand = path.join(dir, CONFIG_NAME);
     if (fs.existsSync(cand)) return cand;
+    const legacy = path.join(dir, LEGACY_CONFIG_NAME);
+    if (fs.existsSync(legacy)) return legacy;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -82,11 +85,11 @@ export function loadEffectiveConfig(home, cwd) {
   return out;
 }
 
-/** `trust` subcommand: bind the cwd's .canny.json by content hash. */
+/** `trust` subcommand: bind the cwd's .verity.json by content hash. */
 export function trustCwd(home, cwd) {
   const file = findConfigFile(cwd);
   if (!file) {
-    return { ok: false, text: `no .canny.json at or above ${path.resolve(cwd)}` };
+    return { ok: false, text: `no .verity.json at or above ${path.resolve(cwd)}` };
   }
   const raw = fs.readFileSync(file);
   const trusted = loadTrusted(home);

@@ -6,10 +6,10 @@
 //   engine/cli.js status [session-file]       what the ledger knows about the latest session
 //   engine/cli.js sessions                    list recorded sessions
 //   engine/cli.js replay [session-file]       re-derive every Stop verdict from the ledger
-//   engine/cli.js trust                       let this project's .canny.json turn checks off
+//   engine/cli.js trust                       let this project's .verity.json turn checks off
 //
-// Home: $VERITY_ENGINE_HOME, else $CANNY_HOME (deprecated alias), else
-// ~/.verity/engine. Existing ~/.canny sessions migrate automatically.
+// Home: $VERITY_ENGINE_HOME, else ~/.verity/engine.
+// Existing ~/.canny sessions migrate automatically.
 import fs from "node:fs";
 import path from "node:path";
 import { handleEvent } from "./hook.js";
@@ -181,7 +181,7 @@ function help() {
       `  engine/cli.js status [session-file]       what the ledger knows about the latest session\n` +
       `  engine/cli.js sessions                    list recorded sessions\n` +
       `  engine/cli.js replay [session-file]       re-derive every Stop verdict from the ledger\n` +
-      `  engine/cli.js trust                       let this project's .canny.json turn checks off\n` +
+      `  engine/cli.js trust                       let this project's .verity.json turn checks off\n` +
       `\n` +
       `Sessions live in ${HOME}/sessions. No model is ever consulted: only facts can block.\n`
   );

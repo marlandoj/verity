@@ -96,6 +96,12 @@ project's trusted `.verity.json` (bound with `verity trust`). Every trip is
 audited as `"valve": true` on the ledger's stop verdict. Opt in only where a
 genuine "no check applies" flow exists.
 
+**Semantic anchor.** A test-runner-shaped pass (`npm test`, `pytest`,
+`go test`, …) in a repo with no test files does not count as verification —
+the `"test": "echo ok"` bypass. The gate blocks and says why. Build, lint,
+and typecheck passes are unaffected. The check is skipped when the tree
+can't be scanned; every withheld pass is audited as `"hollowPass": true`.
+
 ## Adapters
 
 Kimi and Gemini input shapes were captured from live sessions (Kimi Code 0.41.0, Gemini CLI 0.58.0). Their output formats were read from the same installed versions.

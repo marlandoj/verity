@@ -11,6 +11,7 @@ import {
   detectTestDeletion,
   needsPipefailRewrite,
   pipefailRewrite,
+  repoHasTestFiles,
 } from "./checks.js";
 import { globMatch } from "./util.js";
 
@@ -141,12 +142,18 @@ export function handleEvent(rawInput, agent, ctx) {
     const prior = readSession(home, agent, sessionId);
     // Decide over everything before the stop event just appended.
     const history = prior.slice(0, -1);
-    const { decision, message, valve } = decideStop(
+    // Semantic anchor: one repo scan per stop; null (unscannable) skips it.
+    const testFiles = repoHasTestFiles(cwd);
+    const { decision, message, valve, hollowPass } = decideStop(
       history,
       event.stop_hook_active === true,
       cfg.releaseValve === true,
+      testFiles,
     );
-    appendVerdict(home, agent, sessionId, cwd, "stop", decision, message, valve ? { valve: true } : undefined);
+    const extras = {};
+    if (valve) extras.valve = true;
+    if (hollowPass) extras.hollowPass = true;
+    appendVerdict(home, agent, sessionId, cwd, "stop", decision, message, Object.keys(extras).length ? extras : undefined);
     return serialize(decision, message, agent);
   }
 

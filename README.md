@@ -89,6 +89,13 @@ Environment overrides: `CANNY_DIR`, `CANNY_CLI`, `CANNY_HOME`, `VERITY_HOME`, `V
 4. Keep median latency under 250 ms per tool call, with no crashes.
 5. Add `done` once its false positives are handled.
 
+**Release valve (fail closed by default).** A repeated stop with no new tool
+calls after a block stays blocked. The old "stop twice to walk through"
+degrade now requires an explicit opt-in: `"releaseValve": true` in the
+project's trusted `.verity.json` (bound with `verity trust`). Every trip is
+audited as `"valve": true` on the ledger's stop verdict. Opt in only where a
+genuine "no check applies" flow exists.
+
 ## Adapters
 
 Kimi and Gemini input shapes were captured from live sessions (Kimi Code 0.41.0, Gemini CLI 0.58.0). Their output formats were read from the same installed versions.

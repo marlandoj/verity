@@ -35,8 +35,8 @@ function logCrash(home, err) {
   }
 }
 
-function appendVerdict(home, agent, sessionId, cwd, phase, decision, message) {
-  const obj = { type: "verdict", cwd, phase, decision };
+function appendVerdict(home, agent, sessionId, cwd, phase, decision, message, extras) {
+  const obj = { type: "verdict", cwd, phase, decision, ...(extras || {}) };
   if (message !== undefined) obj.message = message;
   appendLine(home, agent, sessionId, obj);
 }
@@ -141,8 +141,12 @@ export function handleEvent(rawInput, agent, ctx) {
     const prior = readSession(home, agent, sessionId);
     // Decide over everything before the stop event just appended.
     const history = prior.slice(0, -1);
-    const { decision, message } = decideStop(history, event.stop_hook_active === true);
-    appendVerdict(home, agent, sessionId, cwd, "stop", decision, message);
+    const { decision, message, valve } = decideStop(
+      history,
+      event.stop_hook_active === true,
+      cfg.releaseValve === true,
+    );
+    appendVerdict(home, agent, sessionId, cwd, "stop", decision, message, valve ? { valve: true } : undefined);
     return serialize(decision, message, agent);
   }
 

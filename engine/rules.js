@@ -8,7 +8,8 @@ const DONE_GUIDANCE =
   "A test, build, lint, or type-check command counts, run so its own exit " +
   "status is the result: a pipe into `tail`, `|| true`, or a trailing " +
   "`; echo` hides it. If no check applies to this change, say so explicitly " +
-  "and stop again.";
+  "and stop again (a repeated stop releases the gate only where the " +
+  "project's trusted .verity.json opts into the release valve).";
 
 function summarize(lines) {
   const edited = [];
@@ -47,17 +48,24 @@ function summarize(lines) {
 
 /**
  * Decide a Stop verdict from prior ledger lines (not including the current
- * stop event). Returns { decision, message? } with decision one of
+ * stop event). Returns { decision, message?, valve? } with decision one of
  * "allow" | "block" | "warn".
+ *
+ * `releaseValveAllowed` gates the release valve and defaults to false (fail
+ * closed): a repeated stop with no new facts after a block degrades to a
+ * warning ONLY when the project's trusted .verity.json opts in with
+ * "releaseValve": true. When the valve trips, `valve: true` is returned so
+ * the trip is distinctly auditable in the ledger.
  */
-export function decideStop(priorLines, stopHookActive) {
+export function decideStop(priorLines, stopHookActive, releaseValveAllowed = false) {
   const s = summarize(priorLines);
   if (s.lastChangeIdx === -1 || s.lastPassIdx > s.lastChangeIdx) {
     return { decision: "allow" };
   }
-  // Release valve: a repeated stop with no new facts after a block degrades
-  // to a warning instead of blocking forever.
-  if (stopHookActive && s.lastVerdictDecision === "block") {
+  // Release valve (opt-in only): a repeated stop with no new facts after a
+  // block degrades to a warning instead of blocking forever. Without the
+  // opt-in, the gate stays blocked — "just stop twice" must not walk through.
+  if (stopHookActive && releaseValveAllowed && s.lastVerdictDecision === "block") {
     let fresh = false;
     for (let i = s.lastVerdictIdx + 1; i < priorLines.length; i++) {
       const ln = priorLines[i];
@@ -73,6 +81,7 @@ export function decideStop(priorLines, stopHookActive) {
     if (!fresh) {
       return {
         decision: "warn",
+        valve: true,
         message:
           `Verity: the agent finished without a passing check after editing ` +
           `${s.edited.join(", ")}. Verify by hand.`,

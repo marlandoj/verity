@@ -80,8 +80,12 @@ export function decideStop(priorLines, stopHookActive) {
     }
   }
   const files = s.edited.join(", ");
+  // The exit annotation appears only when the exit code is known; a null
+  // (missing/failed) exit leaves the command bare.
   const tail = s.lastCommand
-    ? ` The last command was \`${s.lastCommand.command}\` (exit ${s.lastCommand.exitCode}).`
+    ? ` The last command was \`${s.lastCommand.command}\`` +
+      (s.lastCommand.exitCode == null ? "" : ` (exit ${s.lastCommand.exitCode})`) +
+      "."
     : "";
   return {
     decision: "block",

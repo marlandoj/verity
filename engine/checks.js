@@ -25,6 +25,31 @@ function hasCheckWord(s) {
   return WORD_RES.some((re) => re.test(s));
 }
 
+/**
+ * Strip leading command modifiers that don't change what runs (observed):
+ * `time`/`sudo` (with their flags), `exec`, `VAR=value` assignments, and a
+ * `!` that isn't at a command position (a leading `!` is rejected before
+ * this runs). `command` is notably NOT stripped.
+ */
+function stripModifiers(s) {
+  const toks = String(s).trim().split(/\s+/);
+  let i = 0;
+  while (i < toks.length) {
+    const t = toks[i];
+    if (t === "!" || t === "exec" || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) {
+      i++;
+      continue;
+    }
+    if (t === "time" || t === "sudo") {
+      i++;
+      while (i < toks.length && /^-[A-Za-z]/.test(toks[i])) i++;
+      continue;
+    }
+    break;
+  }
+  return toks.slice(i).join(" ");
+}
+
 function isCheckPart(part, pipefailSeen) {
   const p = part.trim();
   if (!p) return false;
@@ -39,6 +64,40 @@ function isCheckPart(part, pipefailSeen) {
   return hasCheckWord(body);
 }
 
+// Behaviorally-derived: "<runner> run <script>" counts as a check only for
+// these pairs. Named test tools count for the four runners; generic script
+// names are runner-specific (npm/pnpm accept test+lint+build, yarn only
+// test, bun only build). Anything else in run-form is not a check.
+const RUN_TOOL_SCRIPTS = new Set([
+  "jest", "vitest", "mocha", "tsc", "eslint", "pytest", "rspec",
+]);
+const RUN_GENERIC_SCRIPTS = {
+  npm: new Set(["test", "lint", "build"]),
+  pnpm: new Set(["test", "lint", "build"]),
+  yarn: new Set(["test"]),
+  bun: new Set(["build"]),
+};
+
+/**
+ * Handle "<runner> run <script>" (and the never-a-check "run-script" /
+ * "<runner> task" forms). Returns true/false when the part is a run-form
+ * (a pipe without pipefail masks the status), null when it isn't.
+ */
+function runFormCheck(part, pipefailSeen) {
+  let body = String(part).trim();
+  if (body.includes("|")) {
+    if (!pipefailSeen) return false;
+    body = body.split("|")[0];
+  }
+  const m = body.match(/^(\S+)\s+(run(?:-script)?|task)\s+(\S+)/);
+  if (!m) return null;
+  if (m[2] !== "run") return false;
+  const script = m[3];
+  if (RUN_TOOL_SCRIPTS.has(script)) return true;
+  const generics = RUN_GENERIC_SCRIPTS[m[1]];
+  return generics ? generics.has(script) : false;
+}
+
 /**
  * True when the command counts as a check: a recognized check invocation
  * whose own exit status is the result. `extraPatterns` are trusted
@@ -47,20 +106,28 @@ function isCheckPart(part, pipefailSeen) {
 export function isVerify(command, extraPatterns = []) {
   const s = stripQuotesAndComments(command);
   if (/\|\|/.test(s)) return false; // || masks the status
-  if (/^\s*!/.test(s)) return false; // negated invocation
   if (/&\s*$/.test(s) && !/&&\s*$/.test(s)) return false; // backgrounded
   if (/\s--(version|help)\b/.test(s)) return false; // not a check run
-  if (/;\s*echo\b/.test(s)) return false; // trailing echo hides the status
   if (extraPatterns.some((p) => p && s.includes(p))) return true;
+  // `;` chains: the exit status is the last segment's, so only the last
+  // non-empty segment can be the check (`npm test; true` hides the status).
+  const segs = s.split(";").map((x) => x.trim()).filter((x) => x !== "");
+  if (segs.length === 0) return false;
   let pipefailSeen = false;
-  // ; chains: the exit status is the last segment's.
-  for (const seg of s.split(";")) {
-    // && chains: any segment may be the check.
-    for (const part of seg.split("&&")) {
-      if (/set\s+-o\s+pipefail/.test(part)) pipefailSeen = true;
-      if (isCheckPart(part, pipefailSeen)) return true;
-    }
+  for (const seg of segs.slice(0, -1)) {
     if (/set\s+-o\s+pipefail/.test(seg)) pipefailSeen = true;
+  }
+  // && chains: any segment may be the check, but a `!` at a command
+  // position disqualifies the whole chain.
+  for (const part of segs[segs.length - 1].split("&&")) {
+    let p = part.trim();
+    if (/^!/.test(p)) return false;
+    p = stripModifiers(p);
+    if (/set\s+-o\s+pipefail/.test(p)) pipefailSeen = true;
+    const runForm = runFormCheck(p, pipefailSeen);
+    if (runForm === true) return true;
+    if (runForm === false) continue;
+    if (isCheckPart(p, pipefailSeen)) return true;
   }
   return false;
 }
@@ -88,15 +155,55 @@ export function pipefailRewrite(command) {
 
 // Corpus-derived patterns. Labels reproduce the observed messages verbatim,
 // including their grammar ("a AWS access key", "a OpenAI or Anthropic key").
+// Token patterns require a word boundary at the start: an embedded "xghp_..."
+// or "myAKIA..." does not count (black-box verified).
 const SECRET_PATTERNS = [
-  { re: /AKIA[0-9A-Z]{16}/, label: "a AWS access key" },
-  { re: /ghp_[A-Za-z0-9]{36}/, label: "a GitHub token" },
-  { re: /sk-(?:ant-)?[A-Za-z0-9_-]{16,}/, label: "a OpenAI or Anthropic key" },
-  { re: /xox[baprs]-[A-Za-z0-9-]{16,}/, label: "a Slack token" },
-  { re: /AIza[0-9A-Za-z_-]{35}/, label: "a Google API key" },
+  { re: /\bAKIA[0-9A-Z]{16}/, label: "a AWS access key" },
+  { re: /\bghp_[A-Za-z0-9]{36}/, label: "a GitHub token" },
+  { re: /\bsk-(?:ant-)?[A-Za-z0-9_-]{16,}/, label: "a OpenAI or Anthropic key" },
+  { re: /\bxox[baprs]-[A-Za-z0-9-]{16,}/, label: "a Slack token" },
+  { re: /\bAIza[0-9A-Za-z_-]{35}/, label: "a Google API key" },
   { re: /-----BEGIN (?:RSA )?PRIVATE KEY-----/, label: "a private key" },
   { re: /-----BEGIN OPENSSH PRIVATE KEY-----/, label: "a private key" },
 ];
+
+// Variable names that mark a hardcoded credential assignment (observed).
+const CRED_NAMES = [
+  "token", "password", "passwd", "secret",
+  "api_key", "apikey", "access_token", "client_secret",
+];
+const CRED_RE = new RegExp(
+  `\\b(?:${CRED_NAMES.join("|")})\\b\\s*[:=]\\s*"([^"]*)"`
+);
+
+/**
+ * True when the text assigns a high-entropy string to a credential-named
+ * variable: `token = "..."`, `password: "..."`, etc. Observed boundary:
+ * value length >= 16 with both a letter and a digit; single quotes,
+ * backticks, and low-entropy values do not count.
+ */
+function isHardcodedCredential(text) {
+  const m = String(text).match(CRED_RE);
+  if (!m) return false;
+  const v = m[1];
+  return v.length >= 16 && /[A-Za-z]/.test(v) && /[0-9]/.test(v);
+}
+
+// Extensions that never count as code for the done-gate (behaviorally
+// derived denylist: docs, images, logs, lockfiles; case-insensitive).
+// Everything else — including extensionless files — counts as code.
+const NON_CODE_EXTS = new Set([
+  "md", "mdx", "txt", "rst", "adoc", "log",
+  "png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "lock",
+]);
+
+/** True when a cwd-relative path counts as code for the done-gate. */
+export function isCodeFile(relPath) {
+  const base = String(relPath).split("/").pop();
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) return true;
+  return !NON_CODE_EXTS.has(base.slice(dot + 1).toLowerCase());
+}
 
 function basename(p) {
   return String(p).split("/").pop();
@@ -104,22 +211,30 @@ function basename(p) {
 
 /**
  * Returns the deny message when content looks like it contains a secret,
- * or null. `allowSecrets` comes from trusted project config.
+ * or null. `allowSecrets` comes from trusted project config. Multiple
+ * findings are joined ("a GitHub token and a hardcoded credential").
+ * The path is shown cwd-relative, matching the ledger's display form.
  */
-export function detectSecret(filePath, content, allowSecrets = false) {
+export function detectSecret(filePath, content, cwd, allowSecrets = false) {
   if (allowSecrets) return null;
   const text = String(content ?? "");
-  const hit = SECRET_PATTERNS.find((p) => p.re.test(text));
-  if (!hit) return null;
-  const base = basename(filePath);
+  const labels = [];
+  for (const p of SECRET_PATTERNS) {
+    if (p.re.test(text)) labels.push(p.label);
+  }
+  if (isHardcodedCredential(text)) labels.push("a hardcoded credential");
+  if (labels.length === 0) return null;
+  const disp = relPath(cwd, filePath);
+  const base = disp.split("/").pop();
+  const label = labels.join(" and ");
   if (base.startsWith(".env")) {
     return (
-      `Canny: ${base} would contain what looks like ${hit.label}. ` +
+      `Canny: ${disp} would contain what looks like ${label}. ` +
       `An env file is only the place for it once git ignores the file, and a committed template never is.`
     );
   }
   return (
-    `Canny: ${base} would contain what looks like ${hit.label}. ` +
+    `Canny: ${disp} would contain what looks like ${label}. ` +
     `Read the value from the environment or a git-ignored env file instead of writing it into the file.`
   );
 }
@@ -154,17 +269,38 @@ export function isTestPath(p) {
   );
 }
 
+/** Sources of an mv command (the moved-from paths), or null. */
+function mvSources(command) {
+  const s = String(command).trim().replace(/^sudo\s+/, "");
+  const m = s.match(/^(git\s+)?mv\s+([\s\S]*)$/);
+  if (!m) return null;
+  const ops = [];
+  for (const t of tokenize(m[2])) {
+    if (t.startsWith("--")) continue;
+    if (t.startsWith("-") && t.length > 1) continue;
+    if (/[*?[\]{}]/.test(t)) continue;
+    const clean = t.replace(/\/+$/, "").replace(/^\.\//, "");
+    if (clean) ops.push(clean);
+  }
+  return ops.length >= 2 ? ops.slice(0, -1) : null;
+}
+
 /**
  * Returns the ask message when a PreToolUse Bash command removes tests,
- * or null. The message names the first matching operand.
+ * or null. Covers rm/git rm and mv (moving a test away removes it).
+ * The message names the first matching operand, cwd-relative.
  */
-export function detectTestDeletion(command) {
-  const ops = rmOperands(command);
-  if (!ops) return null;
-  const hit = ops.find(isTestPath);
-  if (!hit) return null;
+export function detectTestDeletion(command, cwd) {
+  const rmOps = rmOperands(command);
+  const hit = (rmOps && rmOps.find(isTestPath)) || null;
+  const mvHit = !hit && (() => {
+    const srcs = mvSources(command);
+    return (srcs && srcs.find(isTestPath)) || null;
+  })();
+  const found = hit || mvHit;
+  if (!found) return null;
   return (
-    `Canny: this command removes ${hit} from the tests. ` +
+    `Canny: this command removes ${relPath(cwd, found)} from the tests. ` +
     `Tests are only removed or skipped when the user asked for it. ` +
     `Fix the code the test covers instead.`
   );

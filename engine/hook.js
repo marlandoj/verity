@@ -79,7 +79,7 @@ export function handleEvent(rawInput, agent, ctx) {
       const ti = event.tool_input || {};
       const filePath = ti.file_path || ti.path || ti.notebook_path || "file";
       const content = [ti.content, ti.new_string].filter((v) => v !== undefined).join("\n");
-      const msg = detectSecret(filePath, content, cfg.allowSecrets);
+      const msg = detectSecret(filePath, content, cwd, cfg.allowSecrets);
       if (msg) {
         appendVerdict(home, agent, sessionId, cwd, "pre", "deny", msg);
         return serialize("deny", msg, agent);
@@ -88,7 +88,7 @@ export function handleEvent(rawInput, agent, ctx) {
     }
     if (tool === "Bash") {
       const command = String((event.tool_input || {}).command ?? "");
-      const delMsg = detectTestDeletion(command);
+      const delMsg = detectTestDeletion(command, cwd);
       if (delMsg) {
         // The ledger records the true decision; codex's lack of an ask
         // affordance is a serialization concern only.

@@ -2,7 +2,7 @@
 // (paths, commands, outcomes), never file contents or command output beyond
 // a one-line summary.
 import { hash16, lastLine, relPath } from "./util.js";
-import { commandCodeFiles, isVerify } from "./checks.js";
+import { commandCodeFiles, isCodeFile, isVerify } from "./checks.js";
 
 const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
@@ -30,9 +30,11 @@ export function buildFact(event, cwd, cfg = {}) {
 
   if (isPost && EDIT_TOOLS.has(tool)) {
     const files = editFiles(ti, tool).map((p) => relPath(cwd, p));
+    // The gate's change-set is code files only: docs, images, logs and
+    // lockfiles are recorded in `files` but excluded from `code`.
     return {
       phase: "post",
-      fact: { kind: "edit", files, deleted: [], code: [...files] },
+      fact: { kind: "edit", files, deleted: [], code: files.filter(isCodeFile) },
     };
   }
 

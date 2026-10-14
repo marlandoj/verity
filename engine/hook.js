@@ -91,10 +91,11 @@ export function handleEvent(rawInput, agent, ctx) {
       const command = String((event.tool_input || {}).command ?? "");
       const delMsg = detectTestDeletion(command, cwd);
       if (delMsg) {
-        // The ledger records the true decision; codex's lack of an ask
-        // affordance is a serialization concern only.
-        appendVerdict(home, agent, sessionId, cwd, "pre", "ask", delMsg);
-        return serialize("ask", delMsg, agent);
+        // Governance review 2026-10-14: test deletion is deny, not ask.
+        // Tests are only removed when the user asked for it; the gate
+        // refuses the deletion rather than prompting.
+        appendVerdict(home, agent, sessionId, cwd, "pre", "deny", delMsg);
+        return serialize("deny", delMsg, agent);
       }
       if (needsPipefailRewrite(command, cfg.verifyPatterns)) {
         const newCmd = pipefailRewrite(command);

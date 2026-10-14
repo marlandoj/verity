@@ -288,7 +288,7 @@ function mvSources(command) {
 }
 
 /**
- * Returns the ask message when a PreToolUse Bash command removes tests,
+ * Returns the deny message when a PreToolUse Bash command removes tests,
  * or null. Covers rm/git rm and mv (moving a test away removes it).
  * The message names the first matching operand, cwd-relative.
  */

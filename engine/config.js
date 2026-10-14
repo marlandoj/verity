@@ -59,10 +59,15 @@ export function findConfigFile(cwd) {
 
 /**
  * Effective config for a hook event:
- * { verifyPatterns, allowSecrets, ignoreGlobs }.
+ * { verifyPatterns, allowSecrets, ignoreGlobs, releaseValve }.
+ *
+ * releaseValve gates the Stop-hook "release valve" (a repeated stop with no
+ * new facts after a block degrading to a warning). It defaults to false:
+ * fail closed. A project opts in explicitly via its trusted .verity.json,
+ * bound with `verity trust` by the operator.
  */
 export function loadEffectiveConfig(home, cwd) {
-  const out = { verifyPatterns: [], allowSecrets: false, ignoreGlobs: [] };
+  const out = { verifyPatterns: [], allowSecrets: false, ignoreGlobs: [], releaseValve: false };
   const trusted = loadTrusted(home);
   // Global: every trusted config contributes its ignore globs.
   for (const file of Object.keys(trusted)) {
@@ -82,6 +87,7 @@ export function loadEffectiveConfig(home, cwd) {
     out.verifyPatterns = cfg.verify.filter((p) => typeof p === "string");
   }
   if (Array.isArray(cfg.allow) && cfg.allow.includes("secrets")) out.allowSecrets = true;
+  if (cfg.releaseValve === true) out.releaseValve = true;
   return out;
 }
 
@@ -113,6 +119,7 @@ export function trustCwd(home, cwd) {
     if (Array.isArray(cfg.verify) && cfg.verify.length) feats.push("verify");
     if (Array.isArray(cfg.ignore) && cfg.ignore.length) feats.push("ignore");
     if (Array.isArray(cfg.allow) && cfg.allow.length) feats.push("allow");
+    if (cfg.releaseValve === true) feats.push("releaseValve");
   }
   const text = feats.length
     ? `trusted ${file}: ${feats.join(", ")} now take effect`

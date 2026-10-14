@@ -149,10 +149,21 @@ function cmdReplay(arg) {
   lines.forEach((ln, i) => {
     if (ln.type !== "event" || !ln.fact || ln.fact.kind !== "stop") return;
     n++;
-    const { decision } = decideStop(lines.slice(0, i), ln.fact.stopHookActive === true);
     const recorded = lines
       .slice(i + 1)
       .find((l) => l.type === "verdict" && l.phase === "stop");
+    // The valve decision depends on operator-trusted config, which is not in
+    // the ledger; replay with the recorded trip flag so a ledgered warn
+    // re-derives as warn and a ledgered block as block. Same for the
+    // semantic anchor: the ledger's hollowPass flag carries the repo's
+    // test-file state at decision time (absent on old ledgers → assume
+    // tests existed, i.e. pre-anchor behavior).
+    const { decision } = decideStop(
+      lines.slice(0, i),
+      ln.fact.stopHookActive === true,
+      recorded ? recorded.valve === true : false,
+      recorded ? (recorded.hollowPass === true ? false : true) : null,
+    );
     if (!recorded || recorded.decision !== decision) {
       problems.push(
         `stop #${n}: ledger says ${recorded ? recorded.decision : "nothing"}, re-derived ${decision}`

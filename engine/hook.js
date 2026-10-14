@@ -11,6 +11,7 @@ import {
   detectTestDeletion,
   needsPipefailRewrite,
   pipefailRewrite,
+  repoHasTestFiles,
 } from "./checks.js";
 import { globMatch } from "./util.js";
 
@@ -35,8 +36,8 @@ function logCrash(home, err) {
   }
 }
 
-function appendVerdict(home, agent, sessionId, cwd, phase, decision, message) {
-  const obj = { type: "verdict", cwd, phase, decision };
+function appendVerdict(home, agent, sessionId, cwd, phase, decision, message, extras) {
+  const obj = { type: "verdict", cwd, phase, decision, ...(extras || {}) };
   if (message !== undefined) obj.message = message;
   appendLine(home, agent, sessionId, obj);
 }
@@ -141,8 +142,18 @@ export function handleEvent(rawInput, agent, ctx) {
     const prior = readSession(home, agent, sessionId);
     // Decide over everything before the stop event just appended.
     const history = prior.slice(0, -1);
-    const { decision, message } = decideStop(history, event.stop_hook_active === true);
-    appendVerdict(home, agent, sessionId, cwd, "stop", decision, message);
+    // Semantic anchor: one repo scan per stop; null (unscannable) skips it.
+    const testFiles = repoHasTestFiles(cwd);
+    const { decision, message, valve, hollowPass } = decideStop(
+      history,
+      event.stop_hook_active === true,
+      cfg.releaseValve === true,
+      testFiles,
+    );
+    const extras = {};
+    if (valve) extras.valve = true;
+    if (hollowPass) extras.hollowPass = true;
+    appendVerdict(home, agent, sessionId, cwd, "stop", decision, message, Object.keys(extras).length ? extras : undefined);
     return serialize(decision, message, agent);
   }
 

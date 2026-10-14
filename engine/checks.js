@@ -2,6 +2,7 @@
 // observation (see test/fixtures/engine); no shared code with any prior
 // implementation.
 import { relPath, stripQuotesAndComments, tokenize } from "./util.js";
+import { execFileSync } from "node:child_process";
 
 // Programs whose invocations may count as checks (observed allowlist).
 // Basenames match: `./gradlew`, `/usr/local/bin/gradlew`, and
@@ -345,4 +346,104 @@ export function commandCodeFiles(command, cwd) {
     return [];
   }
   return [];
+}
+
+// ---------------------------------------------------------------------------
+// Semantic anchor: a test-runner pass in a repo with no test files proves
+// nothing (the `"test": "echo ok"` class of bypass). The gate refuses to
+// count such a pass as verification.
+// ---------------------------------------------------------------------------
+
+/** Basename-level test file signals, broader than isTestPath (which is tuned
+ *  for deletion detection). Covers x.test.ts, x.spec.js, test_x.py,
+ *  x_test.go, FooTest.java, and test(s)/__tests__ directories. */
+const TEST_BASENAME_RE = /(^test_.*|(^|[._])test\.[a-z0-9]+$|(^|[._])spec\.[a-z0-9]+$)/i;
+
+function looksLikeTestFile(p) {
+  const q = String(p).replace(/^\.\//, "");
+  if (isTestPath(q)) return true;
+  const base = q.split("/").pop();
+  return TEST_BASENAME_RE.test(base);
+}
+
+/**
+ * Does the repo at cwd contain any test files? Returns true/false, or null
+ * when the tree cannot be scanned — the anchor only bites on a positive
+ * determination of "no test files", never on unscannable trees.
+ */
+export function repoHasTestFiles(cwd) {
+  try {
+    const dir = String(cwd || "");
+    if (!dir) return null;
+    let files = null;
+    try {
+      const out = execFileSync("git", ["-C", dir, "ls-files"], {
+        timeout: 8000,
+        maxBuffer: 16 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "ignore"],
+      }).toString();
+      files = out.split("\n").filter((l) => l !== "");
+    } catch {
+      /* not a git repo — fall through to find */
+    }
+    if (!files) {
+      try {
+        const out = execFileSync(
+          "find",
+          [dir, "-maxdepth", "5", "-type", "f", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/.git/*", "-not", "-path", "*/vendor/*"],
+          { timeout: 8000, maxBuffer: 16 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] },
+        ).toString();
+        files = out.split("\n").filter((l) => l !== "");
+      } catch {
+        return null;
+      }
+    }
+    if (!files.length) return null;
+    return files.some(looksLikeTestFile);
+  } catch {
+    return null;
+  }
+}
+
+const TEST_RUNNERS = new Set([
+  "pytest", "jest", "vitest", "mocha", "ava", "tape", "jasmine", "karma",
+  "rspec", "phpunit", "playwright", "cypress",
+]);
+
+/**
+ * True when the command is a test-runner invocation (as opposed to a build,
+ * lint, or typecheck). A bare `npm test` in a repo with no test files is the
+ * hollow-pass shape this anchor targets.
+ */
+export function isTestRunnerCommand(command) {
+  const s = stripQuotesAndComments(String(command));
+  if (!s) return false;
+  const segs = s.split(/[;&|]/).map((x) => x.trim()).filter((x) => x !== "");
+  for (const seg of segs) {
+    let toks = seg.split(/\s+/).filter((t) => t !== "");
+    // Strip env assignments (FOO=bar) and leading sudo/env.
+    while (toks.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[0]) || toks[0] === "sudo" || toks[0] === "env")) toks.shift();
+    if (!toks.length) continue;
+    const head = toks[0].split("/").pop();
+    if (TEST_RUNNERS.has(head)) return true;
+    if (head === "go" && toks[1] === "test") return true;
+    if (head === "cargo" && toks[1] === "test") return true;
+    if (head === "deno" && toks[1] === "test") return true;
+    if (head === "gradlew" || head === "./gradlew" || head === "gradle") {
+      if (toks.slice(1).some((t) => t === "test" || t === "check")) return true;
+      continue;
+    }
+    if (head === "npx" || head === "npx.cmd") {
+      const sub = (toks[1] || "").split("/").pop();
+      if (TEST_RUNNERS.has(sub)) return true;
+      continue;
+    }
+    if (head === "npm" || head === "yarn" || head === "pnpm" || head === "bun") {
+      const rest = toks.slice(1);
+      if (rest[0] === "test") return true;
+      if (rest[0] === "run" && rest[1] && (rest[1] === "test" || TEST_RUNNERS.has(rest[1]))) return true;
+      continue;
+    }
+  }
+  return false;
 }

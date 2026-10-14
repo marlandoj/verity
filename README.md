@@ -102,6 +102,14 @@ the `"test": "echo ok"` bypass. The gate blocks and says why. Build, lint,
 and typecheck passes are unaffected. The check is skipped when the tree
 can't be scanned; every withheld pass is audited as `"hollowPass": true`.
 
+**Known limitation: no coverage linkage.** Verity verifies that a check
+passed after the last edit; it does not verify the check exercised the
+edited code. A full-suite run is assumed to cover the tree. The ledger
+records edited files alongside the files named in each passing command
+(the `code` arrays), so the linkage is answerable on review — but the gate
+itself does not enforce it. Coverage-gated checks remain a project-config
+decision, not a heuristic the gate will guess at.
+
 ## Adapters
 
 Kimi and Gemini input shapes were captured from live sessions (Kimi Code 0.41.0, Gemini CLI 0.58.0). Their output formats were read from the same installed versions.

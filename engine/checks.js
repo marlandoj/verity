@@ -4,11 +4,14 @@
 import { relPath, stripQuotesAndComments, tokenize } from "./util.js";
 
 // Programs whose invocations may count as checks (observed allowlist).
+// Basenames match: `./gradlew`, `/usr/local/bin/gradlew`, and
+// `node_modules/.bin/jest` all count via their final path component.
 const CHECK_PROGRAMS = new Set([
   "npm", "npx", "yarn", "pnpm", "bun", "deno",
   "cargo", "go", "pytest", "python", "mocha",
   "vitest", "jest", "rspec", "tsc", "eslint",
   "prettier", "ruff", "make",
+  "gradle", "gradlew", "mvn", "dotnet", "mix",
 ]);
 
 // Words that mark a check invocation (word-boundaried; _ counts as a word
@@ -59,7 +62,9 @@ function isCheckPart(part, pipefailSeen) {
     if (!pipefailSeen) return false;
     body = body.split("|")[0];
   }
-  const prog = body.trim().split(/\s+/)[0] || "";
+  // The program is the basename: `./gradlew`, `/usr/local/bin/gradlew`,
+  // and `node_modules/.bin/jest` all resolve via the final component.
+  const prog = body.trim().split(/\s+/)[0].split("/").pop() || "";
   if (!CHECK_PROGRAMS.has(prog)) return false;
   return hasCheckWord(body);
 }
@@ -203,10 +208,6 @@ export function isCodeFile(relPath) {
   const dot = base.lastIndexOf(".");
   if (dot <= 0) return true;
   return !NON_CODE_EXTS.has(base.slice(dot + 1).toLowerCase());
-}
-
-function basename(p) {
-  return String(p).split("/").pop();
 }
 
 /**

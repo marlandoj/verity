@@ -89,5 +89,30 @@ check "legacy entry migrated" "$(jq '[.hooks[][] | tostring | select(test("verit
 check "no legacy left" "$(grep -c canny-shadow "$T/old/.claude/settings.json")" "0"
 check "backup written" "$(ls "$T/bk" | grep -c proj_.claude_settings)" "1"
 
+# Real engine (not the fake CLI): end-to-end verdicts through verity-hook.sh.
+# Hermetic: temp engine home, live mode, session ids unique to this run.
+export VERITY_ENGINE_CLI="$ROOT/engine/cli.js" VERITY_ENGINE_HOME="$T/eh" VERITY_HOME="$T/v2"
+unset CANNY_CLI
+bash "$ROOT/scripts/verity.sh" mode live >/dev/null
+ehook() { printf '%s' "$2" | bash "$ROOT/scripts/verity-hook.sh" "$1"; }
+SID="eng-$RANDOM"
+W='{"hook_event_name":"PostToolUse","session_id":"'$SID'","cwd":"/p","tool_name":"Write","tool_input":{"file_path":"/p/a.ts"},"tool_response":{"stdout":"","exit_code":0}}'
+S='{"hook_event_name":"Stop","session_id":"'$SID'","cwd":"/p","last_assistant_message":"done"}'
+ehook claude "$W" >/dev/null
+check "engine stop after edit blocks" "$(ehook claude "$S" | jq -r .decision)" "block"
+check "engine block names file" "$(ehook claude "$S" | jq -r .reason | grep -c 'a.ts changed')" "1"
+SID2="eng2-$RANDOM"
+W2='{"hook_event_name":"PostToolUse","session_id":"'$SID2'","cwd":"/p","tool_name":"Write","tool_input":{"file_path":"/p/a.ts"},"tool_response":{"stdout":"","exit_code":0}}'
+T2='{"hook_event_name":"PostToolUse","session_id":"'$SID2'","cwd":"/p","tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{"stdout":"ok","exit_code":0}}'
+S2='{"hook_event_name":"Stop","session_id":"'$SID2'","cwd":"/p","last_assistant_message":"done"}'
+ehook claude "$W2" >/dev/null; ehook claude "$T2" >/dev/null
+check "engine stop after passing check allows" "$(ehook claude "$S2")" "{}"
+SECRET='{"hook_event_name":"PreToolUse","session_id":"'$SID2'","cwd":"/p","tool_name":"Write","tool_input":{"file_path":"/p/k.ts","content":"x = AKIAIOSFODNN7EXAMPLE"}}'
+check "engine secret denied" "$(ehook claude "$SECRET" | jq -r .hookSpecificOutput.permissionDecision)" "deny"
+NOTE='{"hook_event_name":"SessionStart","session_id":"'$SID2'","cwd":"/p"}'
+check "engine session note" "$(ehook claude "$NOTE" | jq -r .hookSpecificOutput.hookEventName)" "SessionStart"
+check "engine ledger written" "$(ls "$T/eh/sessions" | wc -l | tr -d ' ')" "2"
+unset VERITY_ENGINE_CLI VERITY_ENGINE_HOME VERITY_HOME
+
 echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]

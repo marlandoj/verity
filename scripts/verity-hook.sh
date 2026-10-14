@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verity hook: feeds every harness event to Canny so its ledger fills, logs any verdict,
+# Verity hook: feeds every harness event to the engine so its ledger fills, logs any verdict,
 # and applies it only in live mode. Shadow mode (the default) always answers {}.
 # Jev is disabled in both modes: no key, dead endpoint.
 # VERITY-ADOPTED 2026-09-29: two constitutional amendments over upstream. (1) fail closed when a
@@ -15,8 +15,6 @@
 set -u
 HARNESS="${1:-claude}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CANNY_DIR="${CANNY_DIR:-/home/workspace/Integrations/canny}"
-CANNY_CLI="${CANNY_CLI:-$CANNY_DIR/dist/cli.js}"
 VERITY_HOME="${VERITY_HOME:-$HOME/.verity}"
 VERITY_LOG="${VERITY_LOG:-$VERITY_HOME/verdicts.jsonl}"
 input=$(cat)
@@ -31,6 +29,21 @@ mode=$(jq -r --arg h "$HARNESS" '.harness[$h].mode // .mode // "shadow"' "$cfg" 
 checks=$(jq -r --arg h "$HARNESS" '(.harness[$h].checks // .checks // ["all"]) | join(",")' "$cfg" 2>/dev/null)
 mode="${VERITY_MODE:-${mode:-shadow}}"
 checks="${VERITY_CHECKS:-${checks:-all}}"
+
+# Engine selection. VERITY_ENGINE_CLI wins outright; CANNY_CLI is a deprecated
+# alias for it. Otherwise the engine named by $VERITY_ENGINE or the config's
+# .engine key (default "verity" since cutover): "verity" uses this repo's
+# clean-room engine, "Canny" the pinned checkout (VERITY_ENGINE_DIR, with
+# CANNY_DIR as a deprecated alias).
+ENGINE_CLI="${VERITY_ENGINE_CLI:-${CANNY_CLI:-}}"
+if [ -z "$ENGINE_CLI" ]; then
+  engine="${VERITY_ENGINE:-$(jq -r '.engine // "verity"' "$cfg" 2>/dev/null)}"
+  case "$engine" in
+    verity) ENGINE_CLI="$DIR/../engine/cli.js" ;;
+    *) ENGINE_DIR="${VERITY_ENGINE_DIR:-${CANNY_DIR:-/home/workspace/Integrations/canny}}"
+       ENGINE_CLI="$ENGINE_DIR/dist/cli.js" ;;
+  esac
+fi
 
 event_name() { printf '%s' "$1" | jq -r '.hook_event_name // ""' 2>/dev/null; }
 
@@ -75,7 +88,7 @@ refuse() {
   alarm "$1"
 }
 
-if [ ! -f "$CANNY_CLI" ] || [ "${VERITY_DISABLE:-0}" = "1" ]; then
+if [ ! -f "$ENGINE_CLI" ] || [ "${VERITY_DISABLE:-0}" = "1" ]; then
   # Only enforcing mode has to answer for the gate. Shadow mode still returns {} either way,
   # so an absent analyzer there is invisible to the operator and changes nothing.
   if [ "$mode" = live ]; then
@@ -94,8 +107,15 @@ else
     codex) event="$input"; agent=codex ;;
     *) event="$input"; agent=claude ;;
   esac
-  out=$(printf '%s' "${event:-{\}}" | env -u TYPESAFE_API_KEY CANNY_JEV_URL=http://127.0.0.1:9/disabled \
-    timeout 8 node "$CANNY_CLI" hook --agent "$agent" 2>/dev/null)
+  # Optional capture for the engine soak (see docs/engine-soak-runbook.md):
+  # appends the post-adapter event and agent, one JSON per line.
+  if [ -n "${VERITY_EVENT_CAPTURE:-}" ]; then
+    jq -nc --arg a "$agent" --argjson e "${event:-{\}}" '{agent:$a, event:$e}' \
+      >> "$VERITY_EVENT_CAPTURE" 2>/dev/null
+  fi
+  out=$(printf '%s' "${event:-{\}}" | env -u TYPESAFE_API_KEY \
+    VERITY_ENGINE_JEV_URL=http://127.0.0.1:9/disabled CANNY_JEV_URL=http://127.0.0.1:9/disabled \
+    timeout 8 node "$ENGINE_CLI" hook --agent "$agent" 2>/dev/null)
   ms=$(( $(date +%s%3N) - start ))
 
   # An engine that died, timed out, or answered with something unreadable is not a clean

@@ -8,8 +8,8 @@
 #   --project     directory whose .claude/settings.json and .codex/hooks.json get the hooks
 #                 (default: current directory). Kimi and Gemini configs are user-global.
 #   --engine      which done-gate engine the hook shells out to: the clean-room Verity
-#                 engine in engine/ ("verity") or the pinned Canny checkout ("Canny",
-#                 the default until cutover). Stored in the Verity config's .engine key.
+#                 engine in engine/ ("verity", the default since cutover) or the pinned
+#                 Canny checkout ("Canny"). Stored in the Verity config's .engine key.
 set -euo pipefail
 
 CANNY_REPO="https://github.com/qkal/Canny"
@@ -20,7 +20,7 @@ HOOK="$DIR/verity-hook.sh"
 HARNESSES="claude,codex,kimi,gemini"
 PROJECT="$PWD"
 CANNY_DIR="${CANNY_DIR:-/home/workspace/Integrations/canny}"
-ENGINE="Canny"
+ENGINE="verity"
 BACKUP_DIR="${BACKUP_DIR:-${VERITY_HOME:-$HOME/.verity}/backups}"
 DRY=0
 while [ $# -gt 0 ]; do

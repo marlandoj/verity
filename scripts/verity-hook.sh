@@ -32,12 +32,12 @@ checks="${VERITY_CHECKS:-${checks:-all}}"
 
 # Engine selection. VERITY_ENGINE_CLI wins outright; CANNY_CLI is a deprecated
 # alias for it. Otherwise the engine named by $VERITY_ENGINE or the config's
-# .engine key (default "Canny" until cutover): "verity" uses this repo's
+# .engine key (default "verity" since cutover): "verity" uses this repo's
 # clean-room engine, "Canny" the pinned checkout (VERITY_ENGINE_DIR, with
 # CANNY_DIR as a deprecated alias).
 ENGINE_CLI="${VERITY_ENGINE_CLI:-${CANNY_CLI:-}}"
 if [ -z "$ENGINE_CLI" ]; then
-  engine="${VERITY_ENGINE:-$(jq -r '.engine // "Canny"' "$cfg" 2>/dev/null)}"
+  engine="${VERITY_ENGINE:-$(jq -r '.engine // "verity"' "$cfg" 2>/dev/null)}"
   case "$engine" in
     verity) ENGINE_CLI="$DIR/../engine/cli.js" ;;
     *) ENGINE_DIR="${VERITY_ENGINE_DIR:-${CANNY_DIR:-/home/workspace/Integrations/canny}}"
